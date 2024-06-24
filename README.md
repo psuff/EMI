@@ -5,12 +5,12 @@ EMotional Intelligence
 
 UPDATES
 
-- (2024/06/24) added functions for audio recording, transcription, playing together with API call to LLM. The functions and not Async and the recorded audio (hardcoded 5s) is stored locally.
+- (2024/06/24) added functions for audio recording, transcription, playing together with API call to LLM. The functions are Async. The recorded audio (hardcoded 2s) is stored locally.
 
 TODO
 
 - integrate visual avatar (simplified version)
-- make the whole process async and streaming
+- make audio recording and transcription more efficient
 
 LLM = LLaMa-3-70B on https://groq.com/
 (https://console.groq.com/docs/quickstart)
