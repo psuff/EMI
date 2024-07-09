@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+websockets
+aiohttp
+pydub
+numpy
+librosa
+soundfile
+torch
+transformers
