@@ -86,10 +86,11 @@
         const recordButton = document.getElementById('recordButton');
         let ws;
         let audioContext;
-        const audioBufferQueue = [];
-        let isPlaying = false;
         let isRecording = false;
         let recordingWorklet;
+
+        let dataQueue = [];
+        let isPlaying = false;
 
         // Embedded AudioWorklet code
         const workletCode = `
@@ -162,10 +163,9 @@
             
             ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
-                if (data.type === 'points') {
-                    drawPoints(data.points);
-                } else if (data.type === 'audio') {
-                    queueAudioChunk(data.audio);
+                dataQueue.push(data);
+                if (!isPlaying) {
+                    playNextChunk();
                 }
             };
 
@@ -230,65 +230,66 @@
             });
         }
 
-        function createWavFile(audioBuffer) {
-            const numChannels = 1;
-            const sampleRate = audioContext.sampleRate;
-            const bytesPerSample = 2;
-            const blockAlign = numChannels * bytesPerSample;
-            const byteRate = sampleRate * blockAlign;
-            const dataSize = audioBuffer.length * bytesPerSample;
-            const buffer = new ArrayBuffer(44 + dataSize);
-            const view = new DataView(buffer);
-
-            writeString(view, 0, 'RIFF');
-            view.setUint32(4, 36 + dataSize, true);
-            writeString(view, 8, 'WAVE');
-            writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true);
-            view.setUint16(22, numChannels, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, byteRate, true);
-            view.setUint16(32, blockAlign, true);
-            view.setUint16(34, 16, true);
-            writeString(view, 36, 'data');
-            view.setUint32(40, dataSize, true);
-
-            const samples = new Int16Array(audioBuffer);
-            let offset = 44;
-            for (let i = 0; i < samples.length; i++, offset += 2) {
-                view.setInt16(offset, samples[i], true);
+        function playNextChunk() {
+            if (dataQueue.length === 0) {
+                isPlaying = false;
+                return;
             }
-
-            return buffer;
+            
+            isPlaying = true;
+            const chunk = dataQueue.shift();
+            
+            // Play audio
+            const audioData = base64ToArrayBuffer(chunk.audio);
+            audioContext.decodeAudioData(audioData, function(buffer) {
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.onended = playNextChunk;
+                source.start(0);
+                
+                // Animate points
+                animatePoints(chunk.frames, chunk.duration);
+            });
         }
 
-        function writeString(view, offset, string) {
-            for (let i = 0; i < string.length; i++) {
-                view.setUint8(offset + i, string.charCodeAt(i));
+        function animatePoints(frames, duration) {
+            const frameDuration = 1 / 30;
+            let frameIndex = 0;
+            
+            function animate(timestamp) {
+                if (frameIndex < frames.length) {
+                    drawPoints(frames[frameIndex]);
+                    frameIndex++;
+                    setTimeout(() => requestAnimationFrame(animate), frameDuration * 1000);
+                }
             }
+            
+            requestAnimationFrame(animate);
         }
+
+        // Update the WebSocket onmessage handler
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            dataQueue.push(data);
+            if (!isPlaying) {
+                playNextChunk();
+            }
+        };
 
         function drawPoints(points) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#0affef';
-            points.forEach(function(point) {
-                ctx.beginPath();
-                ctx.arc(point[0], point[1], 2, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = '#0affef';
-            });
-        }
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0affef';
 
-        function queueAudioChunk(base64Audio) {
-            const audioData = base64ToArrayBuffer(base64Audio);
-            audioContext.decodeAudioData(audioData, function(buffer) {
-                audioBufferQueue.push(buffer);
-                if (!isPlaying) {
-                    playNextChunk();
-                }
-            });
+            for (let i = 0; i < points.length; i++) {
+                const x = points[i][0];
+                const y = points[i][1];
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
         }
 
         function base64ToArrayBuffer(base64) {
@@ -299,20 +300,6 @@
                 bytes[i] = binaryString.charCodeAt(i);
             }
             return bytes.buffer;
-        }
-
-        function playNextChunk() {
-            if (audioBufferQueue.length === 0) {
-                isPlaying = false;
-                return;
-            }
-            isPlaying = true;
-            const audioBuffer = audioBufferQueue.shift();
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
-            source.onended = playNextChunk;
-            source.start(0);
         }
     </script>
 </body>

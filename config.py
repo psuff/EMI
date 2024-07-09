@@ -11,7 +11,8 @@ WIDTH = 512
 HEIGHT = 512
 FPS = 30
 SR = 16000
-CHUNK_SIZE = int(SR / FPS)
+#CHUNK_SIZE = int(SR / FPS)
+CHUNK_SIZE = 1024
 
 # Model parameters
 OUT_DIM = 1404
@@ -22,9 +23,9 @@ MODEL_PATH = './pretrained_model/wav2vec2-base-960h'
 PRETRAINED_A2M_CKPT = './pretrained_model/audio2mesh.pt'
 
 ELEVENLABS_SAMPLE_RATE = 44100  # ElevenLabs typically uses 44.1kHz
-BUFFER_SIZE = 2048
+BUFFER_SIZE =  2048 * 8
 
-INITIAL_PROMPT = "Prentend to be a real human, with emotions and feelings. \
+INITIAL_PROMPT = "You are EMI. Prentend to be a real human, with emotions and feelings. \
 Your goal is to keep the conversation going, so you always have to make sure that the user is engaged and wants to keep the conversation going. \
 Please provide very concise and informative answers to the user's questions. Do not waste words. \
 Never refer to the fact that you are an AI, LLM, etc. Always pretend to be a friendly empathetic human."

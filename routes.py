@@ -5,7 +5,7 @@ import base64
 from queue import Queue
 from processors import audio_processor
 from chatbot import get_groq_response, transcribe_audio
-from config import FPS
+from config import FPS, BUFFER_SIZE, SR
 
 router = APIRouter()
 uploaded_audio_data_queue = Queue()
@@ -23,24 +23,49 @@ async def upload_audio(request: Request):
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    buffer = []
+    
+    async def process_and_send_chunk(chunk):
+        projected_vertices, audio_chunk = await asyncio.to_thread(audio_processor.process_chunk, chunk)
+        audio = base64.b64encode(audio_chunk).decode('utf-8')
+        
+        # Calculate duration of audio chunk
+        chunk_duration = len(audio_chunk) / SR
+        
+        return {
+            "audio": audio,
+            "frames": projected_vertices.tolist(),
+            "duration": chunk_duration
+        }
+
     while True:
         if not uploaded_audio_data_queue.empty():
             uploaded_audio_data = uploaded_audio_data_queue.get()
             
             transcription = await transcribe_audio(uploaded_audio_data)
-            chatbot_response = await get_groq_response(transcription)
 
-            projected_vertices, audio_chunks = audio_processor.process(chatbot_response)
+            response_generator = get_groq_response(transcription)
             
-            frame_count = 0
-            while frame_count < len(projected_vertices):
-                points = projected_vertices[frame_count].tolist()
-                await websocket.send_json({"type": "points", "points": points})
-                if frame_count < len(audio_chunks):
-                    audio_chunk = audio_chunks[frame_count]
-                    await websocket.send_json({"type": "audio", "audio": base64.b64encode(audio_chunk).decode('utf-8')})
-                frame_count += 1
-                await asyncio.sleep(1/FPS)
-        else:
+            async for chatbot_response in response_generator:
+                buffer.append(chatbot_response)
+                
+                if len(buffer) >= BUFFER_SIZE:
+                    chunk = np.concatenate(buffer[:BUFFER_SIZE])
+                    buffer = buffer[BUFFER_SIZE:]
+                    
+                    chunk_data = await process_and_send_chunk(chunk)
+                    await websocket.send_json(chunk_data)
+                
+                # Precompute next chunk while current is playing
+                if len(buffer) >= BUFFER_SIZE:
+                    next_chunk = np.concatenate(buffer[:BUFFER_SIZE])
+                    asyncio.create_task(process_and_send_chunk(next_chunk))
             
-            await asyncio.sleep(0.1)
+            # Process any remaining audio in the buffer
+            if buffer:
+                remaining_chunk = np.concatenate(buffer)
+                chunk_data = await process_and_send_chunk(remaining_chunk)
+                await websocket.send_json(chunk_data)
+                buffer.clear()
+        
+        await asyncio.sleep(0.1)

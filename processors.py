@@ -88,6 +88,23 @@ class AudioProcessor:
         audio_chunks = [self._create_audio_chunk(waveform[0][i:i+CHUNK_SIZE]) for i in range(0, len(waveform[0]), CHUNK_SIZE)]
 
         return projected_vertices, audio_chunks
+    
+    def process_chunk(self, waveform):
+        sample = self._prepare_audio_feature(waveform)
+        sample['audio_feature'] = torch.from_numpy(sample['audio_feature']).float().unsqueeze(0)
+            
+        waveform = torch.from_numpy(waveform).float().unsqueeze(0)
+        waveform = self._normalize_waveform(waveform)
+
+        with torch.no_grad():
+            pred = self.model.infer(waveform, sample['seq_len'])
+        pred = pred.squeeze().detach().cpu().numpy()
+        pred = pred.reshape(pred.shape[0], -1, 3)
+        pred = pred + self.default_landmarks
+
+        projected_vertices = self._project_3d_to_2d(pred)
+
+        return projected_vertices, self._create_audio_chunk(waveform[0])
 
 audio_processor = AudioProcessor(model_path=MODEL_PATH,
                                  a2m_ckpt_path=PRETRAINED_A2M_CKPT,

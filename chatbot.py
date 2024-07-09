@@ -112,11 +112,8 @@ async def get_groq_response(prompt):
                     elif response.content.at_eof():
                         break
 
-            audio_chunks = []
             async for audio_chunk in text_to_speech_input_streaming(VOICE_ID, text_iterator()):
-                audio_chunks.append(audio_chunk)
-            
-            return np.concatenate(audio_chunks)
+                yield audio_chunk
 
 async def transcribe_audio(audio_data, samplerate=16000):
     with io.BytesIO() as f:
